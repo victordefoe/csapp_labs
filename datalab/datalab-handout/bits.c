@@ -143,7 +143,9 @@ NOTES:
  *   Rating: 1
  */
 int bitXor(int x, int y) {
-  return 2;
+  int p = x & y; // bit=1 for both x and y
+  int q = (~x) & (~y); // bits=0 for both x and y
+  return (~p)&(~q); // find the zero bits for both p and q
 }
 /* 
  * tmin - return minimum two's complement integer 
@@ -152,9 +154,8 @@ int bitXor(int x, int y) {
  *   Rating: 1
  */
 int tmin(void) {
-
-  return 2;
-
+  
+  return 1<<31; //compiler feels constant 0x80000000 illegal
 }
 //2
 /*
@@ -164,8 +165,15 @@ int tmin(void) {
  *   Max ops: 10
  *   Rating: 1
  */
+// 11111 & 0
 int isTmax(int x) {
-  return 2;
+   //feat 1: use the feature of x+1 is totally oppsite with x (overflow)
+  int Plus_1_test = !(~(x^(x+1)));
+  // feat 2: however both 0xFFFFFFFF(-1) and 0x7FFFFFFF(Tmax) fit the feat 1,
+  // so try to get rid of 0xFFFFFFFF answer
+  int NotAllOne = !(!(~(x|0)));
+  // combine feat 1 and 2, right answer needs to fit both
+  return (Plus_1_test & NotAllOne);
 }
 /* 
  * allOddBits - return 1 if all odd-numbered bits in word set to 1
@@ -176,7 +184,11 @@ int isTmax(int x) {
  *   Rating: 2
  */
 int allOddBits(int x) {
-  return 2;
+  int oddd = 0xAA;
+  oddd = (oddd<<8)+0xAA;
+  oddd = (oddd<<8)+0xAA;
+  oddd = (oddd<<8)+0xAA;
+  return !((x&oddd)^oddd); 
 }
 /* 
  * negate - return -x 
@@ -186,7 +198,7 @@ int allOddBits(int x) {
  *   Rating: 2
  */
 int negate(int x) {
-  return 2;
+  return ~x+1;
 }
 //3
 /* 
@@ -199,7 +211,10 @@ int negate(int x) {
  *   Rating: 3
  */
 int isAsciiDigit(int x) {
-  return 2;
+  int prefix=(!(x&(~0x3F))); // make sure first two bytes must be zero
+  int midium=(!((x&0x30)^0x30)); //  make sure the third byte must be one
+  int suffix=(!(((x&0xF)+0x6)&0xF0)); // make sure the last byte no greater than 9
+  return prefix&midium&suffix; // combine all conditions
 }
 /* 
  * conditional - same as x ? y : z 
@@ -209,7 +224,9 @@ int isAsciiDigit(int x) {
  *   Rating: 3
  */
 int conditional(int x, int y, int z) {
-  return 2;
+   // if x true(choose y), s=0x0; if x false(choose z), s=0xFFFFFFFF;
+  int s = (~(!x))+1;
+  return ((s^y)&y)+(s&z); // use s to control select which part
 }
 /* 
  * isLessOrEqual - if x <= y  then return 1, else return 0 
@@ -219,7 +236,14 @@ int conditional(int x, int y, int z) {
  *   Rating: 3
  */
 int isLessOrEqual(int x, int y) {
-  return 2;
+  // make a (y-x) expression and see if it's negative or positive
+  // if y-x < 0 (x>y) then return 0 else return 1
+  // when x, y are in opposite sign, there may be an overflow need to be avoid
+  int Tmin=(1<<31);
+  int SameSign = !((x&Tmin) ^ (y&Tmin)); // x and y have same sign situation
+  int MinusPos = !( (y+((~(x))+1)) & Tmin); // y-x>0 situation
+  int Ypos_Xneg = (!SameSign) & (!(y&Tmin)); // y positive and x negative situation
+  return Ypos_Xneg | (SameSign & MinusPos);
 }
 //4
 /* 
@@ -231,7 +255,16 @@ int isLessOrEqual(int x, int y) {
  *   Rating: 4 
  */
 int logicalNeg(int x) {
-  return 2;
+  //use "lowbit" method to get lowest bit
+  // example: lowbit(0b00110110)=0b00000010
+  int lowbit = x&((~x)+1); 
+  // for non-zero number, lowbit's two's complement has form like 0b11111110 (highest bit is 1),
+  // but if lowbit=0, it's 2's complement is 0 (highest bit is 0)
+  int neg_lowbit = (~lowbit)+1;
+  // take the differece of highest bit as a classification feature
+  int sign = neg_lowbit & (1<<31);
+  // notice it's an arithmetic right shift
+  return  (sign>>31)+1;
 }
 /* howManyBits - return the minimum number of bits required to represent x in
  *             two's complement
@@ -246,6 +279,25 @@ int logicalNeg(int x) {
  *  Rating: 4
  */
 int howManyBits(int x) {
+  int b16,b8,b4,b2,b1,b0;
+  int sign=x>>31;
+  //Unchanged if x is positive. Otherwise, invert the bitwise (this also removes the sign bit)
+  x = (sign&~x)|(~sign&x);
+
+// Keep narrowing the range
+  b16 = !!(x>>16)<<4;//Is there a 1 in the high sixteenth bit
+  x = x>>b16;//If there is (at least 16 bits are required), the original number is right-shifted by 16 bits
+  b8 = !!(x>>8)<<3;//Is there a 1 in the remaining 8 high bits
+  x = x>>b8;//If there is (requires at least 16+8=24 bits), then shift right by 8 bits
+  b4 = !!(x>>4)<<2;//in the same way
+  x = x>>b4;
+  b2 = !!(x>>2)<<1;
+  x = x>>b2;
+  b1 = !!(x>>1);
+  x = x>>b1;
+  b0 = x;
+  return b16+b8+b4+b2+b1+b0+1;//+1 means add sign bit
+
   return 0;
 }
 //float
@@ -261,7 +313,18 @@ int howManyBits(int x) {
  *   Rating: 4
  */
 unsigned floatScale2(unsigned uf) {
-  return 2;
+  int tmin=1<<31;
+  int scale=(1<<23);
+  int sign=uf&tmin;
+  
+  if( (!( (uf&(~tmin))|0 )) ) // if uf is +/- 0
+    return uf;
+  if(!(uf&(0xFF<<23))) // else if exp field is all zero
+    return (uf<<1)+sign;
+  if(!((uf&(0xFF<<23))^(0xFF<<23))) // if exp field is all one, return NaN
+    return uf;
+  
+  return (uf+scale)&(~tmin)+sign;
 }
 /* 
  * floatFloat2Int - Return bit-level equivalent of expression (int) f
@@ -276,7 +339,28 @@ unsigned floatScale2(unsigned uf) {
  *   Rating: 4
  */
 int floatFloat2Int(unsigned uf) {
-  return 2;
+  int tmin=1<<31;
+  int sign=uf&tmin;
+  int frac=uf&0x007fffff;
+  int Bias=127;
+  int shift=((uf&(0xFF<<23))>>23)-Bias;
+  int res1=(frac+(1<<23))>>(23-shift);
+
+  if( (!( (uf&(~tmin))|0 )) ) // if uf is +/- 0
+    return 0;
+
+  if(shift<0) // if exp<0  then uf<1
+    return 0;
+
+  if(shift < 23) // frac right shift needed
+    if(!sign) // if uf is positive
+      return res1; 
+    else
+      return (~(res1))+1; 
+  if(shift>31)
+    return tmin;
+
+  return ((frac+(1<<23))<<(shift-23))+sign;
 }
 /* 
  * floatPower2 - Return bit-level equivalent of the expression 2.0^x
@@ -292,5 +376,10 @@ int floatFloat2Int(unsigned uf) {
  *   Rating: 4
  */
 unsigned floatPower2(int x) {
-    return 2;
+  int inf=(0xFF)<<23;
+  if(x>127)
+    return inf;
+  if(x>-127)
+    return (x+127)<<23; //float: exp range from -126 to 127
+  return 0;
 }
